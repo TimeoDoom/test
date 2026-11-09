@@ -59,6 +59,8 @@
     <!-- QRCode JS Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
 
     <style>
       body {
@@ -319,7 +321,7 @@
             class="w-full h-full object-contain relative z-0"
           ></canvas>
 
-          <!-- Fallback / Simulated Signal Display (If Camera Off/Denied) -->
+          <!-- Camera selection display when no source is connected -->
           <div
             id="no-signal-overlay"
             class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 z-20 p-4 text-center"
@@ -357,13 +359,6 @@
               >
                 <i class="fa-solid fa-camera"></i>
                 <span>Webcam Locale / PC</span>
-              </button>
-              <button
-                onclick="startSimulationFeed()"
-                class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-4 py-2 rounded-lg flex items-center space-x-2 border border-slate-700 transition"
-              >
-                <i class="fa-solid fa-microchip"></i>
-                <span>Mode Test Simulé</span>
               </button>
             </div>
           </div>
@@ -497,7 +492,7 @@
             <div
               class="text-sm font-bold text-emerald-400 mt-0.5 flex items-center justify-between"
             >
-              <span id="ai-engine-status">COCO-PRO ON</span>
+              <span id="ai-engine-status">COCO-SSD CHARGEMENT</span>
               <i class="fa-solid fa-brain text-emerald-500/40"></i>
             </div>
           </div>
@@ -855,9 +850,12 @@
       let isRecording = false;
       let activeFilterIndex = 0;
       let filterNames = ["Vue: Normale", "Vision Nocturne", "Thermique"];
-      let isSimulationMode = false;
       let isIpCameraStream = false;
       let animFrameId = null;
+      let detectionModel = null;
+      let detections = [];
+      let detectionInProgress = false;
+      let lastDetectionTime = 0;
 
       // Visual HUD grid state
       let showGrid = true;
@@ -873,19 +871,11 @@
       const ctx = canvas.getContext("2d");
       const noSignalOverlay = document.getElementById("no-signal-overlay");
 
-      // Target AI Categories
-      const SIM_OBJECT_TYPES = [
-        { type: "human", label: "Humain (Personne)", color: "#ef4444" },
-        { type: "animal", label: "Animal (Chien)", color: "#10b981" },
-        { type: "animal", label: "Animal (Chat)", color: "#10b981" },
-        { type: "vehicle", label: "Véhicule (Voiture)", color: "#3b82f6" },
-        { type: "object", label: "Colis / Objet", color: "#f59e0b" },
-      ];
-
       // INITIALIZATION
       window.addEventListener("DOMContentLoaded", () => {
         resizeCanvas();
         window.addEventListener("resize", resizeCanvas);
+        loadDetectionModel();
 
         // Generate QR Code for WebRTC remote connection URL
         generateQrCode();
@@ -899,6 +889,36 @@
             document.getElementById("sensitivity-display").innerText =
               `${e.target.value}% Cutoff`;
           });
+
+          async function loadDetectionModel() {
+            const status = document.getElementById("ai-engine-status");
+            try {
+              detectionModel = await cocoSsd.load();
+              status.innerText = "COCO-SSD ACTIF";
+              status.classList.remove("text-red-400");
+              addLogEvent("AI", "Détection réelle COCO-SSD activée.", "emerald");
+            } catch (error) {
+              console.error("Chargement du modèle COCO-SSD impossible:", error);
+              status.innerText = "IA INDISPONIBLE";
+              status.classList.add("text-red-400");
+              addLogEvent("ERROR", "Le moteur de détection réelle est indisponible.", "red");
+            }
+          }
+
+          async function detectObjects(source, now) {
+            if (!detectionModel || detectionInProgress || now - lastDetectionTime < 250) return;
+            if (!source || source.readyState === 0) return;
+            detectionInProgress = true;
+            lastDetectionTime = now;
+            try {
+              detections = await detectionModel.detect(source);
+            } catch (error) {
+              console.error("Erreur de détection COCO-SSD:", error);
+              detections = [];
+            } finally {
+              detectionInProgress = false;
+            }
+          }
       });
 
       // RESIZE CANVAS HANDLER
@@ -909,7 +929,7 @@
         if (canvas.width !== width || canvas.height !== height) {
           canvas.width = width;
           canvas.height = height;
-          simEntitiesPosition = [];
+          detections = [];
         }
       }
 
@@ -958,7 +978,6 @@
 
         stopCurrentStream();
         isIpCameraStream = true;
-        isSimulationMode = false;
 
         ipStreamImg.src = url;
         ipStreamImg.onload = () => {
@@ -985,7 +1004,6 @@
 
       // CAMERA INITIALIZATION (MediaDevices API)
       async function initCamera(facingModeChoice) {
-        isSimulationMode = false;
         isIpCameraStream = false;
         ipStreamImg.classList.add("hidden");
         stopCurrentStream();
@@ -1034,20 +1052,6 @@
         }
       }
 
-      // SIMULATE REMOTE SMARTPHONE WEBRTC FEED
-      function simulateRemotePhoneConnection() {
-        closeQrModal();
-        addLogEvent(
-          "P2P",
-          "Smartphone distant connecté via WebRTC (P2P)",
-          "indigo",
-        );
-        document.getElementById("p2p-status").innerText = "RELIÉ (P2P)";
-        document.getElementById("p2p-status").className =
-          "text-indigo-400 font-bold";
-        initCamera("environment");
-      }
-
       function switchCameraFacing() {
         const newFacing =
           currentFacingMode === "environment" ? "user" : "environment";
@@ -1065,21 +1069,6 @@
           cancelAnimationFrame(animFrameId);
           animFrameId = null;
         }
-      }
-
-      function startSimulationFeed() {
-        stopCurrentStream();
-        isSimulationMode = true;
-        isIpCameraStream = false;
-        noSignalOverlay.classList.add("hidden");
-        document.getElementById("active-cam-name").innerText =
-          "Mode Simulation Test";
-        addLogEvent(
-          "SYSTEM",
-          "Mode simulation de détection IA activé",
-          "indigo",
-        );
-        startProcessingLoop();
       }
 
       // RENDER & AI PROCESSING LOOP
@@ -1105,19 +1094,20 @@
               ipStreamImg.naturalWidth,
               ipStreamImg.naturalHeight,
             );
-          } else if (
-            !isSimulationMode &&
-            video.readyState === video.HAVE_ENOUGH_DATA
-          ) {
+          } else if (video.readyState === video.HAVE_ENOUGH_DATA) {
             drawMediaContained(video, video.videoWidth, video.videoHeight);
-          } else if (isSimulationMode) {
-            drawSimulatedSurveillanceBg();
           } else {
             ctx.fillStyle = "#000";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
           }
 
-          processAndDrawDetections();
+          const source = isIpCameraStream
+            ? ipStreamImg
+            : video.readyState === video.HAVE_ENOUGH_DATA
+              ? video
+              : null;
+          detectObjects(source, now);
+          drawDetections();
           animFrameId = requestAnimationFrame(renderFrame);
         }
 
@@ -1140,61 +1130,37 @@
         animFrameId = requestAnimationFrame(renderFrame);
       }
 
-      function drawSimulatedSurveillanceBg() {
-        ctx.fillStyle = "#090d16";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = "#1e293b";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(
-          canvas.width * 0.1,
-          canvas.height * 0.1,
-          canvas.width * 0.8,
-          canvas.height * 0.8,
-        );
-
-        ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
-        ctx.font = "14px JetBrains Mono";
-        ctx.fillText("FLUX DE TEST SIMULÉ - AEGIS VISION PRO REMOTE", 20, 30);
-        ctx.fillText(new Date().toLocaleString("fr-FR"), 20, 50);
-      }
-
       // DETECTION & BOUNDING BOXES
-      let simEntitiesPosition = [];
-
-      function processAndDrawDetections() {
+      function drawDetections() {
         const minConfidence =
           parseInt(document.getElementById("sensitivity-range").value) / 100;
-        const allowHuman = document.getElementById("detect-human").checked;
-        const allowAnimal = document.getElementById("detect-animal").checked;
-        const allowVehicle = document.getElementById("detect-vehicle").checked;
-        const allowObject = document.getElementById("detect-object").checked;
-
-        if (simEntitiesPosition.length === 0 || Math.random() < 0.005) {
-          generateSimulatedTargets();
-        }
 
         let currentHumanCount = 0;
         let currentAnimalCount = 0;
 
-        simEntitiesPosition.forEach((entity) => {
-          entity.x += entity.vx;
-          entity.y += entity.vy;
+        detections.forEach((prediction) => {
+          if (prediction.score < minConfidence) return;
+          const category = detectionCategory(prediction.class);
+          if (!document.getElementById(`detect-${category}`).checked) return;
 
-          if (entity.x < 50 || entity.x > canvas.width - 150) entity.vx *= -1;
-          if (entity.y < 50 || entity.y > canvas.height - 150) entity.vy *= -1;
+          const sourceWidth = isIpCameraStream ? ipStreamImg.naturalWidth : video.videoWidth;
+          const sourceHeight = isIpCameraStream ? ipStreamImg.naturalHeight : video.videoHeight;
+          if (!sourceWidth || !sourceHeight) return;
+          const rect = containedRect(sourceWidth, sourceHeight);
+          const [x, y, width, height] = prediction.bbox;
+          const detection = {
+            x: rect.x + (x / sourceWidth) * rect.width,
+            y: rect.y + (y / sourceHeight) * rect.height,
+            w: (width / sourceWidth) * rect.width,
+            h: (height / sourceHeight) * rect.height,
+            label: prediction.class,
+            confidence: prediction.score,
+            color: category === "human" ? "#ef4444" : category === "animal" ? "#10b981" : category === "vehicle" ? "#3b82f6" : "#f59e0b",
+          };
 
-          let isAllowed = false;
-          if (entity.type === "human" && allowHuman) isAllowed = true;
-          if (entity.type === "animal" && allowAnimal) isAllowed = true;
-          if (entity.type === "vehicle" && allowVehicle) isAllowed = true;
-          if (entity.type === "object" && allowObject) isAllowed = true;
-
-          if (isAllowed && entity.confidence >= minConfidence) {
-            if (entity.type === "human") currentHumanCount++;
-            if (entity.type === "animal") currentAnimalCount++;
-
-            drawBoundingBox(entity);
-          }
+          if (category === "human") currentHumanCount++;
+          if (category === "animal") currentAnimalCount++;
+          drawBoundingBox(detection);
         });
 
         document.getElementById("count-human").innerText = currentHumanCount;
@@ -1205,39 +1171,18 @@
         }
       }
 
-      function generateSimulatedTargets() {
-        simEntitiesPosition = [];
-        const count = Math.floor(Math.random() * 2) + 1;
+      function detectionCategory(label) {
+        if (label === "person") return "human";
+        if (["cat", "dog", "bird", "horse", "sheep", "cow"].includes(label)) return "animal";
+        if (["bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat"].includes(label)) return "vehicle";
+        return "object";
+      }
 
-        for (let i = 0; i < count; i++) {
-          const template =
-            SIM_OBJECT_TYPES[
-              Math.floor(Math.random() * SIM_OBJECT_TYPES.length)
-            ];
-          simEntitiesPosition.push({
-            id: Math.random().toString(36).substr(2, 5),
-            type: template.type,
-            label: template.label,
-            color: template.color,
-            confidence: (0.65 + Math.random() * 0.3).toFixed(2),
-            x: Math.random() * (canvas.width - 200) + 50,
-            y: Math.random() * (canvas.height - 200) + 50,
-            w:
-              template.type === "human"
-                ? 110
-                : template.type === "vehicle"
-                  ? 180
-                  : 80,
-            h:
-              template.type === "human"
-                ? 190
-                : template.type === "vehicle"
-                  ? 120
-                  : 70,
-            vx: (Math.random() - 0.5) * 1.5,
-            vy: (Math.random() - 0.5) * 1.5,
-          });
-        }
+      function containedRect(sourceWidth, sourceHeight) {
+        const scale = Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight);
+        const width = sourceWidth * scale;
+        const height = sourceHeight * scale;
+        return { x: (canvas.width - width) / 2, y: (canvas.height - height) / 2, width, height };
       }
 
       function drawBoundingBox(obj) {
@@ -1512,7 +1457,7 @@
 
       function showRemoteStream(stream) {
         stopCurrentStream();
-        isSimulationMode = false; isIpCameraStream = false;
+        isIpCameraStream = false;
         ipStreamImg.classList.add("hidden");
         currentStream = stream; video.srcObject = stream; video.play().catch(() => {});
         video.onloadedmetadata = () => {
