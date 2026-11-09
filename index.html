@@ -131,6 +131,12 @@
         left: 0;
         animation: scan 3s linear infinite;
       }
+
+      #view-canvas {
+        display: block;
+        max-width: 100%;
+        max-height: 100%;
+      }
       @keyframes scan {
         0% {
           top: 0%;
@@ -898,8 +904,13 @@
       // RESIZE CANVAS HANDLER
       function resizeCanvas() {
         const container = document.getElementById("video-container");
-        canvas.width = container.clientWidth;
-        canvas.height = container.clientHeight;
+        const width = Math.max(1, container.clientWidth);
+        const height = Math.max(1, container.clientHeight);
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+          simEntitiesPosition = [];
+        }
       }
 
       // QR CODE GENERATION & MOBILE PAIRING SETUP
@@ -1010,16 +1021,16 @@
             startProcessingLoop();
           };
         } catch (err) {
-          console.warn(
-            "Accès caméra introuvable. Bascule mode simulation:",
-            err,
-          );
+          console.error("Accès à la caméra impossible:", err);
+          noSignalOverlay.classList.remove("hidden");
+          document.getElementById("active-cam-name").innerText =
+            "Aucune caméra connectée";
+          document.getElementById("p2p-status").innerText = "ERREUR CAMÉRA";
           addLogEvent(
-            "WARNING",
-            "Webcam locale indisponible. Bascule vers mode simulation.",
+            "ERROR",
+            "Caméra réelle indisponible. Autorisez l'accès caméra et utilisez HTTPS.",
             "amber",
           );
-          startSimulationFeed();
         }
       }
 
@@ -1048,8 +1059,11 @@
           currentStream.getTracks().forEach((track) => track.stop());
           currentStream = null;
         }
+        video.pause();
+        video.srcObject = null;
         if (animFrameId) {
           cancelAnimationFrame(animFrameId);
+          animFrameId = null;
         }
       }
 
@@ -1085,19 +1099,43 @@
 
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-          if (isIpCameraStream) {
-            ctx.drawImage(ipStreamImg, 0, 0, canvas.width, canvas.height);
+          if (isIpCameraStream && ipStreamImg.complete) {
+            drawMediaContained(
+              ipStreamImg,
+              ipStreamImg.naturalWidth,
+              ipStreamImg.naturalHeight,
+            );
           } else if (
             !isSimulationMode &&
             video.readyState === video.HAVE_ENOUGH_DATA
           ) {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          } else {
+            drawMediaContained(video, video.videoWidth, video.videoHeight);
+          } else if (isSimulationMode) {
             drawSimulatedSurveillanceBg();
+          } else {
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
           }
 
           processAndDrawDetections();
           animFrameId = requestAnimationFrame(renderFrame);
+        }
+
+        function drawMediaContained(source, sourceWidth, sourceHeight) {
+          if (!sourceWidth || !sourceHeight) return;
+
+          const scale = Math.min(
+            canvas.width / sourceWidth,
+            canvas.height / sourceHeight,
+          );
+          const width = sourceWidth * scale;
+          const height = sourceHeight * scale;
+          const x = (canvas.width - width) / 2;
+          const y = (canvas.height - height) / 2;
+
+          ctx.fillStyle = "#000";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(source, x, y, width, height);
         }
         animFrameId = requestAnimationFrame(renderFrame);
       }
