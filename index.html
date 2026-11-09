@@ -856,6 +856,7 @@
       let detections = [];
       let detectionInProgress = false;
       let lastDetectionTime = 0;
+      let processingLoopRunning = false;
 
       // Visual HUD grid state
       let showGrid = true;
@@ -905,21 +906,29 @@
             }
           }
 
-          async function detectObjects(source, now) {
-            if (!detectionModel || detectionInProgress || now - lastDetectionTime < 250) return;
-            if (!source || source.readyState === 0) return;
-            detectionInProgress = true;
-            lastDetectionTime = now;
-            try {
-              detections = await detectionModel.detect(source);
-            } catch (error) {
-              console.error("Erreur de détection COCO-SSD:", error);
-              detections = [];
-            } finally {
-              detectionInProgress = false;
-            }
-          }
       });
+
+      async function detectObjects(source, now) {
+        if (
+          !detectionModel ||
+          detectionInProgress ||
+          now - lastDetectionTime < 700
+        ) {
+          return;
+        }
+        if (!source || source.readyState === 0) return;
+
+        detectionInProgress = true;
+        lastDetectionTime = now;
+        try {
+          detections = await detectionModel.detect(source);
+        } catch (error) {
+          console.error("Erreur de détection COCO-SSD:", error);
+          detections = [];
+        } finally {
+          detectionInProgress = false;
+        }
+      }
 
       // RESIZE CANVAS HANDLER
       function resizeCanvas() {
@@ -1069,6 +1078,7 @@
           cancelAnimationFrame(animFrameId);
           animFrameId = null;
         }
+        processingLoopRunning = false;
       }
 
       // RENDER & AI PROCESSING LOOP
@@ -1076,7 +1086,12 @@
       let frameCount = 0;
 
       function startProcessingLoop() {
+        if (processingLoopRunning) return;
+        processingLoopRunning = true;
+
         function renderFrame(now) {
+          if (!processingLoopRunning) return;
+
           frameCount++;
           if (now - lastFrameTime >= 1000) {
             document.getElementById("fps-counter").innerText = frameCount
