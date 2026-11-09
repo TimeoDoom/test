@@ -1,0 +1,1532 @@
+<!doctype html>
+<html lang="fr" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      AegisVision Pro - Surveillance Intelligente & Remote IP/WebRTC
+    </title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              slate: {
+                850: "#111827",
+                950: "#030712",
+              },
+              sentinel: {
+                red: "#ef4444",
+                glow: "rgba(239, 68, 68, 0.4)",
+              },
+            },
+            fontFamily: {
+              mono: ["JetBrains Mono", "Courier New", "monospace"],
+              sans: ["Inter", "sans-serif"],
+            },
+            animation: {
+              "pulse-fast": "pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+              "radar-sweep": "sweep 4s linear infinite",
+              "flash-red": "flashRed 0.5s infinite alternate",
+            },
+            keyframes: {
+              sweep: {
+                "0%": { transform: "rotate(0deg)" },
+                "100%": { transform: "rotate(360deg)" },
+              },
+              flashRed: {
+                "0%": { backgroundColor: "rgba(239, 68, 68, 0.25)" },
+                "100%": { backgroundColor: "rgba(239, 68, 68, 0.05)" },
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <!-- FontAwesome Icons -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <!-- Google Fonts -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- QRCode JS Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+      }
+      .font-mono {
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      /* Custom Scrollbars */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0f172a;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #475569;
+      }
+
+      /* Canvas visual overlay modes */
+      .night-vision-effect {
+        filter: contrast(1.3) brightness(1.2) hue-rotate(90deg) invert(0.1);
+      }
+      .thermal-effect {
+        filter: contrast(2.5) saturate(3) hue-rotate(180deg);
+      }
+
+      /* Tactical grid background */
+      .grid-overlay {
+        background-size: 40px 40px;
+        background-image:
+          linear-gradient(
+            to right,
+            rgba(255, 255, 255, 0.05) 1px,
+            transparent 1px
+          ),
+          linear-gradient(
+            to bottom,
+            rgba(255, 255, 255, 0.05) 1px,
+            transparent 1px
+          );
+      }
+
+      /* Sentinel Alert State */
+      .sentinel-active-border {
+        box-shadow:
+          0 0 25px rgba(239, 68, 68, 0.6),
+          inset 0 0 15px rgba(239, 68, 68, 0.4);
+        border-color: #ef4444 !important;
+      }
+
+      /* Scan line animation */
+      .scan-line {
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(59, 130, 246, 0.8),
+          transparent
+        );
+        position: absolute;
+        top: 0;
+        left: 0;
+        animation: scan 3s linear infinite;
+      }
+      @keyframes scan {
+        0% {
+          top: 0%;
+          opacity: 0;
+        }
+        15% {
+          opacity: 1;
+        }
+        85% {
+          opacity: 1;
+        }
+        100% {
+          top: 100%;
+          opacity: 0;
+        }
+      }
+    </style>
+  </head>
+  <body
+    class="bg-slate-950 text-slate-100 min-h-screen flex flex-col select-none overflow-x-hidden"
+  >
+    <!-- TOP NAVIGATION BAR -->
+    <header
+      class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50 px-4 py-2.5 flex items-center justify-between"
+    >
+      <div class="flex items-center space-x-3">
+        <div
+          class="h-9 w-9 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400"
+        >
+          <i class="fa-solid font-bold fa-shield-halved text-xl"></i>
+        </div>
+        <div>
+          <h1
+            class="font-bold text-lg leading-none tracking-tight flex items-center gap-2"
+          >
+            AEGIS<span class="text-emerald-400 font-normal">VISION</span>
+            <span
+              class="bg-emerald-500/20 text-emerald-400 text-[10px] font-mono px-1.5 py-0.5 rounded border border-emerald-500/30"
+              >PRO v5.0 REMOTE</span
+            >
+          </h1>
+          <p class="text-xs text-slate-400 font-mono">
+            STATION DE SURVEILLANCE & DÉTECTION INTEL
+          </p>
+        </div>
+      </div>
+
+      <!-- System Controls Header Center/Right -->
+      <div class="flex items-center space-x-2 sm:space-x-3">
+        <!-- Source Picker Button -->
+        <button
+          onclick="openSourceModal()"
+          class="px-3 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-950/30 hover:bg-cyan-900/40 text-cyan-300 text-xs font-semibold flex items-center space-x-2 transition"
+        >
+          <i class="fa-solid fa-network-wired text-cyan-400"></i>
+          <span class="hidden md:inline">SOURCE VIDÉO</span>
+        </button>
+
+        <!-- QR Code Mobile Pair Button -->
+        <button
+          onclick="openQrModal()"
+          class="px-3 py-1.5 rounded-lg border border-indigo-500/40 bg-indigo-950/30 hover:bg-indigo-900/40 text-indigo-300 text-xs font-semibold flex items-center space-x-2 transition"
+        >
+          <i class="fa-solid fa-qrcode text-indigo-400"></i>
+          <span class="hidden sm:inline">RELIER SMARTPHONE</span>
+        </button>
+
+        <!-- System Status Badges -->
+        <div
+          class="hidden lg:flex items-center space-x-3 text-xs font-mono bg-slate-950 px-3 py-1.5 rounded-md border border-slate-800"
+        >
+          <div class="flex items-center space-x-2">
+            <span
+              class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"
+            ></span>
+            <span class="text-slate-400">STATUT:</span>
+            <span class="text-emerald-400 font-semibold" id="sys-status"
+              >ACTIF</span
+            >
+          </div>
+          <div class="h-3 w-[1px] bg-slate-800"></div>
+          <div>
+            <span class="text-slate-400">FPS:</span>
+            <span class="text-cyan-400" id="fps-counter">00</span>
+          </div>
+        </div>
+
+        <!-- Emergency Mute / Audio Alert Switch -->
+        <button
+          id="siren-toggle-btn"
+          class="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium flex items-center space-x-2 transition"
+        >
+          <i
+            class="fa-solid fa-volume-xmark text-slate-400"
+            id="siren-icon"
+          ></i>
+          <span class="hidden sm:inline">SIRÈNE</span>
+        </button>
+
+        <!-- Sentinel Mode Activation Button -->
+        <button
+          id="sentinel-master-btn"
+          onclick="toggleSentinelMode()"
+          class="px-4 py-1.5 rounded-lg border border-red-500/40 bg-red-950/40 hover:bg-red-900/60 text-red-200 text-xs font-bold flex items-center space-x-2 transition shadow-lg shadow-red-950/50"
+        >
+          <span class="relative flex h-2.5 w-2.5">
+            <span
+              id="sentinel-ping"
+              class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-0"
+            ></span>
+            <span
+              id="sentinel-dot"
+              class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"
+            ></span>
+          </span>
+          <span id="sentinel-btn-text">MODE SENTINELLE : INACTIF</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- RED ALERT BANNER (SENTINEL TRIGGERED) -->
+    <div
+      id="red-alert-banner"
+      class="hidden bg-red-600 text-white px-4 py-2 flex items-center justify-between animate-flash-red shadow-lg z-40 border-b border-red-700"
+    >
+      <div class="flex items-center space-x-3">
+        <i class="fa-solid fa-triangle-exclamation text-xl animate-bounce"></i>
+        <div>
+          <p class="font-bold text-sm tracking-wide">
+            ALERTE INTRUSION EN COURS !
+          </p>
+          <p class="text-xs text-red-100">
+            Détection d'une présence humaine non autorisée - Mode Sentinelle
+            engagé.
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <button
+          onclick="dismissAlert()"
+          class="bg-red-900/80 hover:bg-red-950 text-white text-xs px-3 py-1 rounded border border-red-400/30"
+        >
+          ACQUITTER L'ALERTE
+        </button>
+      </div>
+    </div>
+
+    <!-- MAIN BODY CONTENT -->
+    <div
+      class="flex-1 flex flex-col lg:flex-row gap-3 p-3 overflow-hidden max-w-[1920px] w-full mx-auto"
+    >
+      <!-- LEFT COLUMN: MAIN MONITOR & FEED (70% width on Desktop) -->
+      <div class="flex-1 flex flex-col space-y-3 min-w-0">
+        <!-- VIDEO CANVAS MONITOR CONTAINER -->
+        <div
+          id="video-container"
+          class="relative bg-slate-900 rounded-xl border border-slate-800 overflow-hidden flex-1 min-h-[350px] sm:min-h-[480px] flex items-center justify-center transition-all"
+        >
+          <!-- Tactical HUD Grid Lines Overlay -->
+          <div
+            id="hud-grid"
+            class="absolute inset-0 grid-overlay pointer-events-none z-10 opacity-40"
+          ></div>
+
+          <!-- Scan Line FX -->
+          <div class="scan-line pointer-events-none z-10"></div>
+
+          <!-- Video Feed HTML5 Elements -->
+          <video id="webcam" autoplay playsinline muted class="hidden"></video>
+          <!-- IP Camera Stream / MJPEG image container fallback -->
+          <img
+            id="ip-stream-img"
+            class="hidden absolute inset-0 w-full h-full object-contain"
+            crossorigin="anonymous"
+          />
+
+          <!-- Main Processing Canvas -->
+          <canvas
+            id="view-canvas"
+            class="w-full h-full object-contain relative z-0"
+          ></canvas>
+
+          <!-- Fallback / Simulated Signal Display (If Camera Off/Denied) -->
+          <div
+            id="no-signal-overlay"
+            class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 z-20 p-4 text-center"
+          >
+            <div
+              class="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-3 text-slate-600"
+            >
+              <i class="fa-solid fa-video-slash text-2xl"></i>
+            </div>
+            <h3 class="text-base font-semibold text-slate-200">
+              SELECTIONNER UNE SOURCE VIDÉO
+            </h3>
+            <p class="text-xs text-slate-400 max-w-sm mt-1 mb-4">
+              Connectez votre smartphone via Wi-Fi/QR Code, entrez l'URL d'une
+              caméra IP ou utilisez la webcam de votre PC.
+            </p>
+            <div class="flex flex-wrap justify-center gap-2">
+              <button
+                onclick="openQrModal()"
+                class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center space-x-2 transition shadow-lg shadow-indigo-950/50"
+              >
+                <i class="fa-solid fa-qrcode"></i>
+                <span>Connecter Smartphone (QR Code)</span>
+              </button>
+              <button
+                onclick="openSourceModal()"
+                class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center space-x-2 transition"
+              >
+                <i class="fa-solid fa-globe"></i>
+                <span>URL Caméra IP / MJPEG</span>
+              </button>
+              <button
+                onclick="initCamera('environment')"
+                class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center space-x-2 transition"
+              >
+                <i class="fa-solid fa-camera"></i>
+                <span>Webcam Locale / PC</span>
+              </button>
+              <button
+                onclick="startSimulationFeed()"
+                class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-4 py-2 rounded-lg flex items-center space-x-2 border border-slate-700 transition"
+              >
+                <i class="fa-solid fa-microchip"></i>
+                <span>Mode Test Simulé</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- HUD Overlay Controls (Top Canvas Bar) -->
+          <div
+            class="absolute top-3 left-3 right-3 flex justify-between items-center z-20 pointer-events-none"
+          >
+            <!-- Live Recording Status Indicator -->
+            <div
+              class="flex items-center space-x-2 bg-slate-950/80 backdrop-blur px-3 py-1.5 rounded-lg border border-slate-800 pointer-events-auto"
+            >
+              <span
+                id="rec-dot"
+                class="h-2.5 w-2.5 rounded-full bg-slate-600"
+              ></span>
+              <span
+                id="rec-status-text"
+                class="text-xs font-mono text-slate-300 font-semibold"
+                >VEILLE</span
+              >
+              <span
+                id="rec-timer"
+                class="text-xs font-mono text-slate-400 hidden"
+                >00:00</span
+              >
+            </div>
+
+            <!-- Target Counter Badges -->
+            <div class="flex items-center space-x-2 pointer-events-auto">
+              <div
+                class="bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded-lg border border-slate-800 text-xs font-mono flex items-center space-x-1.5"
+              >
+                <i class="fa-solid fa-user text-red-400"></i>
+                <span class="text-slate-400">HUMAINS:</span>
+                <span id="count-human" class="text-red-400 font-bold">0</span>
+              </div>
+              <div
+                class="bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded-lg border border-slate-800 text-xs font-mono flex items-center space-x-1.5"
+              >
+                <i class="fa-solid fa-paw text-emerald-400"></i>
+                <span class="text-slate-400">ANIMAUX:</span>
+                <span id="count-animal" class="text-emerald-400 font-bold"
+                  >0</span
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Floating Canvas Toolbar -->
+          <div
+            class="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center bg-slate-950/90 backdrop-blur border border-slate-800 rounded-xl p-1.5 space-x-1.5 z-20 shadow-2xl max-w-[95%] overflow-x-auto"
+          >
+            <!-- Quick Switch Camera -->
+            <button
+              onclick="switchCameraFacing()"
+              title="Changer de caméra (Avant/Arrière)"
+              class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center space-x-1.5 border border-slate-700"
+            >
+              <i class="fa-solid fa-arrows-rotate text-emerald-400"></i>
+              <span class="hidden sm:inline">Cam. Avant/Arrière</span>
+            </button>
+
+            <div class="h-4 w-[1px] bg-slate-800"></div>
+
+            <!-- Capture Photo Button -->
+            <button
+              onclick="takeSnapshot()"
+              title="Prendre une photo instantanée"
+              class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center space-x-1.5 border border-slate-700"
+            >
+              <i class="fa-solid fa-camera text-cyan-400"></i>
+              <span class="hidden sm:inline">Capture</span>
+            </button>
+
+            <!-- Record Video Toggle -->
+            <button
+              id="record-btn"
+              onclick="toggleManualRecord()"
+              title="Démarrer/Arrêter l'enregistrement"
+              class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center space-x-1.5 border border-slate-700"
+            >
+              <i
+                class="fa-solid fa-circle text-red-500"
+                id="record-btn-icon"
+              ></i>
+              <span id="record-btn-text" class="hidden sm:inline"
+                >Enregistrer</span
+              >
+            </button>
+
+            <div class="h-4 w-[1px] bg-slate-800"></div>
+
+            <!-- Visual Filters Selector -->
+            <button
+              onclick="cycleFilter()"
+              title="Changer le mode de vue (Normal, Nuit, Thermique)"
+              class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center space-x-1.5 border border-slate-700"
+            >
+              <i class="fa-solid fa-eye text-amber-400"></i>
+              <span id="filter-name" class="hidden sm:inline"
+                >Vue: Normale</span
+              >
+            </button>
+
+            <!-- Tactical Grid Toggle -->
+            <button
+              onclick="toggleHudGrid()"
+              title="Afficher/Masquer la grille tactique"
+              class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
+            >
+              <i class="fa-solid fa-border-all"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- ANALYTICS & QUICK STATUS CARDS -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div class="bg-slate-900 border border-slate-800 p-3 rounded-xl">
+            <div class="text-[11px] text-slate-400 font-mono">SOURCE VIDÉO</div>
+            <div
+              class="text-sm font-bold text-slate-200 mt-0.5 flex items-center justify-between"
+            >
+              <span id="active-cam-name" class="truncate">Caméra Locale</span>
+              <i class="fa-solid fa-video text-slate-500"></i>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 p-3 rounded-xl">
+            <div class="text-[11px] text-slate-400 font-mono">DÉTECTEUR AI</div>
+            <div
+              class="text-sm font-bold text-emerald-400 mt-0.5 flex items-center justify-between"
+            >
+              <span id="ai-engine-status">COCO-PRO ON</span>
+              <i class="fa-solid fa-brain text-emerald-500/40"></i>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 p-3 rounded-xl">
+            <div class="text-[11px] text-slate-400 font-mono">
+              APPAIRAGE P2P
+            </div>
+            <div
+              class="text-sm font-bold text-indigo-400 mt-0.5 flex items-center justify-between"
+            >
+              <span id="p2p-status">DÉCONNECTÉ</span>
+              <i class="fa-solid fa-wifi text-indigo-500/40"></i>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 p-3 rounded-xl">
+            <div class="text-[11px] text-slate-400 font-mono">SEUIL AI</div>
+            <div
+              class="text-sm font-bold text-slate-200 mt-0.5 flex items-center justify-between"
+            >
+              <span id="sensitivity-display">65% Cutoff</span>
+              <i class="fa-solid fa-sliders text-slate-500"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: CONTROL PANEL & LOGS (30% width on Desktop) -->
+      <div class="w-full lg:w-96 flex flex-col space-y-3">
+        <!-- PANEL 1: AI DETECTION CONFIG & FILTERS -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <h2
+            class="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center justify-between"
+          >
+            <span
+              ><i class="fa-solid fa-sliders text-emerald-400 mr-2"></i>Filtres
+              de Détection AI</span
+            >
+            <span class="text-[10px] text-slate-500">Temps Réel</span>
+          </h2>
+
+          <!-- Toggle Grid -->
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <label
+              class="flex items-center justify-between bg-slate-950 p-2.5 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700"
+            >
+              <span class="flex items-center space-x-2">
+                <i class="fa-solid fa-user text-red-400"></i>
+                <span>Humains</span>
+              </span>
+              <input
+                type="checkbox"
+                id="detect-human"
+                checked
+                class="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
+              />
+            </label>
+
+            <label
+              class="flex items-center justify-between bg-slate-950 p-2.5 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700"
+            >
+              <span class="flex items-center space-x-2">
+                <i class="fa-solid fa-dog text-emerald-400"></i>
+                <span>Animaux</span>
+              </span>
+              <input
+                type="checkbox"
+                id="detect-animal"
+                checked
+                class="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
+              />
+            </label>
+
+            <label
+              class="flex items-center justify-between bg-slate-950 p-2.5 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700"
+            >
+              <span class="flex items-center space-x-2">
+                <i class="fa-solid fa-car text-blue-400"></i>
+                <span>Véhicules</span>
+              </span>
+              <input
+                type="checkbox"
+                id="detect-vehicle"
+                checked
+                class="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
+              />
+            </label>
+
+            <label
+              class="flex items-center justify-between bg-slate-950 p-2.5 rounded-lg border border-slate-800 cursor-pointer hover:border-slate-700"
+            >
+              <span class="flex items-center space-x-2">
+                <i class="fa-solid fa-box text-amber-400"></i>
+                <span>Objets</span>
+              </span>
+              <input
+                type="checkbox"
+                id="detect-object"
+                checked
+                class="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
+              />
+            </label>
+          </div>
+
+          <!-- Sensitivity Slider -->
+          <div class="mt-4">
+            <div
+              class="flex justify-between text-xs font-mono text-slate-400 mb-1.5"
+            >
+              <span>Seuil de Confiance</span>
+              <span id="sens-val" class="text-emerald-400">65%</span>
+            </div>
+            <input
+              type="range"
+              id="sensitivity-range"
+              min="40"
+              max="95"
+              value="65"
+              class="w-full accent-emerald-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
+        </div>
+
+        <!-- PANEL 2: REAL-TIME EVENT TIMELINE LOG -->
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex-1 flex flex-col min-h-[220px] max-h-[350px] lg:max-h-none"
+        >
+          <div class="flex items-center justify-between mb-3">
+            <h2
+              class="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center"
+            >
+              <i class="fa-solid fa-list-ul text-emerald-400 mr-2"></i>Journal
+              d'Événements
+            </h2>
+            <button
+              onclick="clearLogs()"
+              class="text-[10px] text-slate-500 hover:text-slate-300 font-mono underline"
+            >
+              Effacer
+            </button>
+          </div>
+
+          <!-- Scrollable Log Container -->
+          <div
+            id="event-logs-container"
+            class="flex-1 overflow-y-auto space-y-2 pr-1 text-xs font-mono"
+          >
+            <div
+              class="p-2 rounded bg-slate-950 border border-slate-800/80 text-slate-400 text-[11px]"
+            >
+              <span class="text-slate-500">[SYSTEM]</span> AegisVision Pro prêt.
+              Choisissez une source vidéo.
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL 3: SNAPSHOT & RECORDING MEDIA GALLERY -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <h2
+            class="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center justify-between"
+          >
+            <span
+              ><i class="fa-solid fa-photo-film text-cyan-400 mr-2"></i>Captures
+              & Enregistrements</span
+            >
+            <span id="gallery-count" class="text-[10px] text-slate-500"
+              >0 Fichier</span
+            >
+          </h2>
+
+          <div
+            id="gallery-container"
+            class="grid grid-cols-4 gap-2 max-h-36 overflow-y-auto pr-1"
+          >
+            <div
+              class="col-span-4 text-center py-4 text-xs text-slate-500 italic bg-slate-950/50 rounded-lg border border-dashed border-slate-800"
+            >
+              Aucune capture récente
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 1: SOURCE CONFIGURATION (IP CAM & WEBCAM) -->
+    <div
+      id="source-modal"
+      class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+    >
+      <div
+        class="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-md p-5 shadow-2xl space-y-4"
+      >
+        <div
+          class="flex items-center justify-between border-b border-slate-800 pb-3"
+        >
+          <h3
+            class="font-bold text-sm text-slate-100 flex items-center space-x-2"
+          >
+            <i class="fa-solid fa-network-wired text-cyan-400"></i>
+            <span>SÉLECTION DE SOURCE VIDÉO</span>
+          </h3>
+          <button
+            onclick="closeSourceModal()"
+            class="text-slate-400 hover:text-slate-200"
+          >
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+
+        <!-- Options Tabs -->
+        <div class="space-y-3 text-xs">
+          <!-- IP CAM HTTP / MJPEG Input -->
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+            <label class="block font-semibold text-cyan-400 mb-1"
+              >Flux Caméra IP / MJPEG (URL Local HTTP)</label
+            >
+            <p class="text-slate-400 text-[11px] mb-2">
+              Exemples: <code>http://192.168.1.45:8080/video</code> (IP Webcam
+              Android) ou DroidCam.
+            </p>
+            <div class="flex gap-2">
+              <input
+                type="url"
+                id="ip-camera-url"
+                placeholder="http://192.168.1.XX:8080/video"
+                class="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-slate-200 text-xs focus:ring-1 focus:ring-cyan-500 outline-none"
+              />
+              <button
+                onclick="connectIpCamera()"
+                class="bg-cyan-600 hover:bg-cyan-500 text-white font-semibold px-3 py-1.5 rounded transition"
+              >
+                Connecter
+              </button>
+            </div>
+          </div>
+
+          <!-- Local Webcam Select -->
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+            <label class="block font-semibold text-emerald-400 mb-1"
+              >Webcam Directe (USB / PC)</label
+            >
+            <div class="flex gap-2 mt-2">
+              <button
+                onclick="
+                  initCamera('user');
+                  closeSourceModal();
+                "
+                class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 p-2 rounded border border-slate-700 font-medium"
+              >
+                Caméra Avant
+              </button>
+              <button
+                onclick="
+                  initCamera('environment');
+                  closeSourceModal();
+                "
+                class="flex-1 bg-emerald-700 hover:bg-emerald-600 text-white p-2 rounded font-medium"
+              >
+                Caméra Arrière (Mobile)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 2: QR CODE & SMARTPHONE WEBRTC PAIRING -->
+    <div
+      id="qr-modal"
+      class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
+    >
+      <div
+        class="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-lg p-5 shadow-2xl space-y-4"
+      >
+        <div
+          class="flex items-center justify-between border-b border-slate-800 pb-3"
+        >
+          <h3
+            class="font-bold text-sm text-slate-100 flex items-center space-x-2"
+          >
+            <i class="fa-solid fa-qrcode text-indigo-400"></i>
+            <span>CONNECTER VOTRE SMARTPHONE EN CAMÉRA DISTANTE</span>
+          </h3>
+          <button
+            onclick="closeQrModal()"
+            class="text-slate-400 hover:text-slate-200"
+          >
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+          <!-- QR Code Box -->
+          <div
+            class="flex flex-col items-center justify-center p-4 bg-slate-950 rounded-xl border border-slate-800"
+          >
+            <div id="qrcode" class="p-2 bg-white rounded-lg"></div>
+            <p class="text-[10px] text-slate-400 mt-2 font-mono text-center">
+              Scannez avec votre téléphone pour ouvrir la caméra mobile
+            </p>
+          </div>
+
+          <!-- Instructions & PIN -->
+          <div class="space-y-3 text-xs">
+            <div
+              class="bg-indigo-950/30 border border-indigo-500/30 p-3 rounded-lg"
+            >
+              <h4 class="font-bold text-indigo-300 mb-1">
+                Code d'appairage rapide
+              </h4>
+              <div
+                class="flex items-center justify-between bg-slate-950 p-2 rounded font-mono text-base font-bold text-indigo-400 border border-slate-800"
+              >
+                <span id="pair-pin-code">AEGIS-8492</span>
+                <button
+                  onclick="copyPairPin()"
+                  class="text-xs text-slate-400 hover:text-white"
+                  title="Copier"
+                >
+                  <i class="fa-solid fa-copy"></i>
+                </button>
+              </div>
+            </div>
+
+            <ol
+              class="list-decimal list-inside space-y-1 text-slate-300 text-[11px]"
+            >
+              <li>Ce fichier doit être hébergé en HTTPS (GitHub Pages, Netlify…).</li>
+              <li>Scannez le QR code, puis touchez « Démarrer la caméra ».</li>
+              <li>Autorisez l'accès à la caméra sur le smartphone.</li>
+            </ol>
+
+            <input id="host-url" onchange="saveHost(this.value)" placeholder="https://votre-site.com/aegis.html" class="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-[11px] font-mono text-slate-300" />
+            <div id="pair-status" class="text-[11px] font-mono text-amber-400">En attente du téléphone…</div>
+            <button
+              onclick="closeQrModal();initCamera('user')"
+              class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 rounded-lg transition text-xs flex items-center justify-center space-x-2"
+            >
+              <i class="fa-solid fa-mobile-screen"></i>
+              <span>Utiliser la caméra de ce PC</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCRIPT LOGIC -->
+    <script>
+      // GLOBAL SYSTEM STATE & VARIABLES
+      let currentStream = null;
+      let currentFacingMode = "environment";
+      let isSentinelActive = false;
+      let isSirenEnabled = false;
+      let isRecording = false;
+      let activeFilterIndex = 0;
+      let filterNames = ["Vue: Normale", "Vision Nocturne", "Thermique"];
+      let isSimulationMode = false;
+      let isIpCameraStream = false;
+      let animFrameId = null;
+
+      // Visual HUD grid state
+      let showGrid = true;
+
+      // Audio Context for Alarm Siren
+      let audioCtx = null;
+      let sirenOscillator = null;
+
+      // Canvas & Media Elements
+      const video = document.getElementById("webcam");
+      const ipStreamImg = document.getElementById("ip-stream-img");
+      const canvas = document.getElementById("view-canvas");
+      const ctx = canvas.getContext("2d");
+      const noSignalOverlay = document.getElementById("no-signal-overlay");
+
+      // Target AI Categories
+      const SIM_OBJECT_TYPES = [
+        { type: "human", label: "Humain (Personne)", color: "#ef4444" },
+        { type: "animal", label: "Animal (Chien)", color: "#10b981" },
+        { type: "animal", label: "Animal (Chat)", color: "#10b981" },
+        { type: "vehicle", label: "Véhicule (Voiture)", color: "#3b82f6" },
+        { type: "object", label: "Colis / Objet", color: "#f59e0b" },
+      ];
+
+      // INITIALIZATION
+      window.addEventListener("DOMContentLoaded", () => {
+        resizeCanvas();
+        window.addEventListener("resize", resizeCanvas);
+
+        // Generate QR Code for WebRTC remote connection URL
+        generateQrCode();
+
+        // Setup GUI slider listener
+        document
+          .getElementById("sensitivity-range")
+          .addEventListener("input", (e) => {
+            document.getElementById("sens-val").innerText =
+              `${e.target.value}%`;
+            document.getElementById("sensitivity-display").innerText =
+              `${e.target.value}% Cutoff`;
+          });
+      });
+
+      // RESIZE CANVAS HANDLER
+      function resizeCanvas() {
+        const container = document.getElementById("video-container");
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+      }
+
+      // QR CODE GENERATION & MOBILE PAIRING SETUP
+      let PEER_ID = "";
+      function hostBase() {
+        if (/^https?:/.test(location.protocol)) return location.href.split(/[?#]/)[0];
+        return localStorage.getItem("aegis_host") || "";
+      }
+      function generateQrCode() {
+        const box = document.getElementById("qrcode");
+        box.innerHTML = "";
+        const base = hostBase();
+        const inp = document.getElementById("host-url");
+        if (inp) { inp.value = base; inp.readOnly = /^https?:/.test(location.protocol); }
+        if (!PEER_ID || !base) { box.innerHTML = '<p style="color:#334155;font-size:11px;width:140px;height:140px;display:flex;align-items:center;text-align:center">' + (PEER_ID ? "Entrez l’adresse HTTPS où ce fichier est hébergé" : "Connexion au serveur d’appairage…") + "</p>"; return; }
+        new QRCode(box, { text: `${base}?cam=${PEER_ID}`, width: 140, height: 140, colorDark: "#030712", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.H });
+        document.getElementById("pair-pin-code").innerText = PEER_ID.slice(0, 8).toUpperCase();
+      }
+      function saveHost(v) { localStorage.setItem("aegis_host", v.trim()); generateQrCode(); }
+
+      function openQrModal() {
+        document.getElementById("qr-modal").classList.remove("hidden");
+      }
+      function closeQrModal() {
+        document.getElementById("qr-modal").classList.add("hidden");
+      }
+
+      function openSourceModal() {
+        document.getElementById("source-modal").classList.remove("hidden");
+      }
+      function closeSourceModal() {
+        document.getElementById("source-modal").classList.add("hidden");
+      }
+
+      function copyPairPin() {
+        const pin = document.getElementById("pair-pin-code").innerText;
+        navigator.clipboard.writeText(pin);
+        addLogEvent("SYSTEM", `Code d'appairage copié: ${pin}`, "cyan");
+      }
+
+      // CONNECT REMOTE IP CAMERA STREAM (MJPEG / HTTP URL)
+      function connectIpCamera() {
+        const url = document.getElementById("ip-camera-url").value.trim();
+        if (!url) return;
+
+        stopCurrentStream();
+        isIpCameraStream = true;
+        isSimulationMode = false;
+
+        ipStreamImg.src = url;
+        ipStreamImg.onload = () => {
+          noSignalOverlay.classList.add("hidden");
+          document.getElementById("active-cam-name").innerText =
+            "Caméra IP (HTTP)";
+          document.getElementById("p2p-status").innerText = "CONNECTÉ (IP)";
+          addLogEvent("SOURCE", `Flux Caméra IP connecté: ${url}`, "cyan");
+          closeSourceModal();
+          startProcessingLoop();
+        };
+
+        ipStreamImg.onerror = () => {
+          addLogEvent(
+            "ERROR",
+            `Impossible de charger le flux Caméra IP : ${url}`,
+            "red",
+          );
+          alert(
+            "Erreur de connexion à la caméra IP. Vérifiez l'adresse IP et le réseau Wi-Fi.",
+          );
+        };
+      }
+
+      // CAMERA INITIALIZATION (MediaDevices API)
+      async function initCamera(facingModeChoice) {
+        isSimulationMode = false;
+        isIpCameraStream = false;
+        ipStreamImg.classList.add("hidden");
+        stopCurrentStream();
+        currentFacingMode = facingModeChoice;
+
+        const constraints = {
+          video: {
+            facingMode: { ideal: facingModeChoice },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        };
+
+        try {
+          currentStream =
+            await navigator.mediaDevices.getUserMedia(constraints);
+          video.srcObject = currentStream;
+          video.play();
+
+          video.onloadedmetadata = () => {
+            noSignalOverlay.classList.add("hidden");
+            document.getElementById("active-cam-name").innerText =
+              facingModeChoice === "environment"
+                ? "Caméra Arrière Mobile"
+                : "Webcam Locale";
+            document.getElementById("p2p-status").innerText = "DIRECT";
+            addLogEvent(
+              "SYSTEM",
+              `Caméra initialisée (${facingModeChoice})`,
+              "emerald",
+            );
+            startProcessingLoop();
+          };
+        } catch (err) {
+          console.warn(
+            "Accès caméra introuvable. Bascule mode simulation:",
+            err,
+          );
+          addLogEvent(
+            "WARNING",
+            "Webcam locale indisponible. Bascule vers mode simulation.",
+            "amber",
+          );
+          startSimulationFeed();
+        }
+      }
+
+      // SIMULATE REMOTE SMARTPHONE WEBRTC FEED
+      function simulateRemotePhoneConnection() {
+        closeQrModal();
+        addLogEvent(
+          "P2P",
+          "Smartphone distant connecté via WebRTC (P2P)",
+          "indigo",
+        );
+        document.getElementById("p2p-status").innerText = "RELIÉ (P2P)";
+        document.getElementById("p2p-status").className =
+          "text-indigo-400 font-bold";
+        initCamera("environment");
+      }
+
+      function switchCameraFacing() {
+        const newFacing =
+          currentFacingMode === "environment" ? "user" : "environment";
+        initCamera(newFacing);
+      }
+
+      function stopCurrentStream() {
+        if (currentStream) {
+          currentStream.getTracks().forEach((track) => track.stop());
+          currentStream = null;
+        }
+        if (animFrameId) {
+          cancelAnimationFrame(animFrameId);
+        }
+      }
+
+      function startSimulationFeed() {
+        stopCurrentStream();
+        isSimulationMode = true;
+        isIpCameraStream = false;
+        noSignalOverlay.classList.add("hidden");
+        document.getElementById("active-cam-name").innerText =
+          "Mode Simulation Test";
+        addLogEvent(
+          "SYSTEM",
+          "Mode simulation de détection IA activé",
+          "indigo",
+        );
+        startProcessingLoop();
+      }
+
+      // RENDER & AI PROCESSING LOOP
+      let lastFrameTime = performance.now();
+      let frameCount = 0;
+
+      function startProcessingLoop() {
+        function renderFrame(now) {
+          frameCount++;
+          if (now - lastFrameTime >= 1000) {
+            document.getElementById("fps-counter").innerText = frameCount
+              .toString()
+              .padStart(2, "0");
+            frameCount = 0;
+            lastFrameTime = now;
+          }
+
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          if (isIpCameraStream) {
+            ctx.drawImage(ipStreamImg, 0, 0, canvas.width, canvas.height);
+          } else if (
+            !isSimulationMode &&
+            video.readyState === video.HAVE_ENOUGH_DATA
+          ) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          } else {
+            drawSimulatedSurveillanceBg();
+          }
+
+          processAndDrawDetections();
+          animFrameId = requestAnimationFrame(renderFrame);
+        }
+        animFrameId = requestAnimationFrame(renderFrame);
+      }
+
+      function drawSimulatedSurveillanceBg() {
+        ctx.fillStyle = "#090d16";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(
+          canvas.width * 0.1,
+          canvas.height * 0.1,
+          canvas.width * 0.8,
+          canvas.height * 0.8,
+        );
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
+        ctx.font = "14px JetBrains Mono";
+        ctx.fillText("FLUX DE TEST SIMULÉ - AEGIS VISION PRO REMOTE", 20, 30);
+        ctx.fillText(new Date().toLocaleString("fr-FR"), 20, 50);
+      }
+
+      // DETECTION & BOUNDING BOXES
+      let simEntitiesPosition = [];
+
+      function processAndDrawDetections() {
+        const minConfidence =
+          parseInt(document.getElementById("sensitivity-range").value) / 100;
+        const allowHuman = document.getElementById("detect-human").checked;
+        const allowAnimal = document.getElementById("detect-animal").checked;
+        const allowVehicle = document.getElementById("detect-vehicle").checked;
+        const allowObject = document.getElementById("detect-object").checked;
+
+        if (simEntitiesPosition.length === 0 || Math.random() < 0.005) {
+          generateSimulatedTargets();
+        }
+
+        let currentHumanCount = 0;
+        let currentAnimalCount = 0;
+
+        simEntitiesPosition.forEach((entity) => {
+          entity.x += entity.vx;
+          entity.y += entity.vy;
+
+          if (entity.x < 50 || entity.x > canvas.width - 150) entity.vx *= -1;
+          if (entity.y < 50 || entity.y > canvas.height - 150) entity.vy *= -1;
+
+          let isAllowed = false;
+          if (entity.type === "human" && allowHuman) isAllowed = true;
+          if (entity.type === "animal" && allowAnimal) isAllowed = true;
+          if (entity.type === "vehicle" && allowVehicle) isAllowed = true;
+          if (entity.type === "object" && allowObject) isAllowed = true;
+
+          if (isAllowed && entity.confidence >= minConfidence) {
+            if (entity.type === "human") currentHumanCount++;
+            if (entity.type === "animal") currentAnimalCount++;
+
+            drawBoundingBox(entity);
+          }
+        });
+
+        document.getElementById("count-human").innerText = currentHumanCount;
+        document.getElementById("count-animal").innerText = currentAnimalCount;
+
+        if (isSentinelActive && currentHumanCount > 0) {
+          triggerSentinelAlarm(currentHumanCount);
+        }
+      }
+
+      function generateSimulatedTargets() {
+        simEntitiesPosition = [];
+        const count = Math.floor(Math.random() * 2) + 1;
+
+        for (let i = 0; i < count; i++) {
+          const template =
+            SIM_OBJECT_TYPES[
+              Math.floor(Math.random() * SIM_OBJECT_TYPES.length)
+            ];
+          simEntitiesPosition.push({
+            id: Math.random().toString(36).substr(2, 5),
+            type: template.type,
+            label: template.label,
+            color: template.color,
+            confidence: (0.65 + Math.random() * 0.3).toFixed(2),
+            x: Math.random() * (canvas.width - 200) + 50,
+            y: Math.random() * (canvas.height - 200) + 50,
+            w:
+              template.type === "human"
+                ? 110
+                : template.type === "vehicle"
+                  ? 180
+                  : 80,
+            h:
+              template.type === "human"
+                ? 190
+                : template.type === "vehicle"
+                  ? 120
+                  : 70,
+            vx: (Math.random() - 0.5) * 1.5,
+            vy: (Math.random() - 0.5) * 1.5,
+          });
+        }
+      }
+
+      function drawBoundingBox(obj) {
+        ctx.save();
+        ctx.strokeStyle = obj.color;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 3]);
+        ctx.strokeRect(obj.x, obj.y, obj.w, obj.h);
+
+        ctx.fillStyle = obj.color;
+        const labelText = `${obj.label} ${Math.round(obj.confidence * 100)}%`;
+        ctx.font = "bold 11px JetBrains Mono";
+        const textWidth = ctx.measureText(labelText).width;
+        ctx.fillRect(obj.x, obj.y - 20, textWidth + 10, 20);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(labelText, obj.x + 5, obj.y - 5);
+        ctx.restore();
+      }
+
+      // MODE SENTINELLE
+      function toggleSentinelMode() {
+        isSentinelActive = !isSentinelActive;
+        const btn = document.getElementById("sentinel-master-btn");
+        const btnText = document.getElementById("sentinel-btn-text");
+        const ping = document.getElementById("sentinel-ping");
+        const dot = document.getElementById("sentinel-dot");
+        const container = document.getElementById("video-container");
+
+        if (isSentinelActive) {
+          btnText.innerText = "MODE SENTINELLE : ACTIF";
+          btn.classList.remove("border-red-500/40", "bg-red-950/40");
+          btn.classList.add(
+            "border-red-500",
+            "bg-red-600",
+            "text-white",
+            "animate-pulse",
+          );
+          ping.classList.remove("opacity-0");
+          dot.classList.add("bg-white");
+
+          container.classList.add("sentinel-active-border");
+          addLogEvent("SENTINEL", "Mode Sentinelle ARMÉ.", "red");
+        } else {
+          btnText.innerText = "MODE SENTINELLE : INACTIF";
+          btn.classList.remove(
+            "border-red-500",
+            "bg-red-600",
+            "text-white",
+            "animate-pulse",
+          );
+          btn.classList.add(
+            "border-red-500/40",
+            "bg-red-950/40",
+            "text-red-200",
+          );
+          ping.classList.add("opacity-0");
+          dot.classList.remove("bg-white");
+
+          container.classList.remove("sentinel-active-border");
+          dismissAlert();
+          addLogEvent("SENTINEL", "Mode Sentinelle Désarmé.", "slate");
+        }
+      }
+
+      let lastAutoCaptureTime = 0;
+      function triggerSentinelAlarm(humanCount) {
+        document.getElementById("red-alert-banner").classList.remove("hidden");
+
+        if (isSirenEnabled) playSirenTone();
+
+        const now = Date.now();
+        if (now - lastAutoCaptureTime > 10000) {
+          lastAutoCaptureTime = now;
+          takeSnapshot(true);
+          addLogEvent(
+            "ALERTE",
+            `INTRUSION DETECTÉE (${humanCount} Humain(s)). Photo capturée.`,
+            "red",
+          );
+        }
+      }
+
+      function dismissAlert() {
+        document.getElementById("red-alert-banner").classList.add("hidden");
+        stopSirenTone();
+      }
+
+      // AUDIO SIREN SYNTHESIZER
+      document
+        .getElementById("siren-toggle-btn")
+        .addEventListener("click", () => {
+          isSirenEnabled = !isSirenEnabled;
+          const btn = document.getElementById("siren-toggle-btn");
+          const icon = document.getElementById("siren-icon");
+
+          if (isSirenEnabled) {
+            btn.classList.add(
+              "border-emerald-500",
+              "bg-emerald-950/50",
+              "text-emerald-300",
+            );
+            icon.className = "fa-solid fa-volume-high text-emerald-400";
+            addLogEvent("AUDIO", "Sirène d'alerte activée", "emerald");
+          } else {
+            btn.classList.remove(
+              "border-emerald-500",
+              "bg-emerald-950/50",
+              "text-emerald-300",
+            );
+            icon.className = "fa-solid fa-volume-xmark text-slate-400";
+            stopSirenTone();
+            addLogEvent("AUDIO", "Sirène d'alerte désactivée", "slate");
+          }
+        });
+
+      function playSirenTone() {
+        if (!audioCtx)
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (sirenOscillator) return;
+
+        sirenOscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        sirenOscillator.type = "sawtooth";
+        sirenOscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+        sirenOscillator.frequency.exponentialRampToValueAtTime(
+          880,
+          audioCtx.currentTime + 0.5,
+        );
+
+        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+
+        sirenOscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        sirenOscillator.start();
+      }
+
+      function stopSirenTone() {
+        if (sirenOscillator) {
+          sirenOscillator.stop();
+          sirenOscillator.disconnect();
+          sirenOscillator = null;
+        }
+      }
+
+      // MEDIA CAPTURE & GALLERY
+      function takeSnapshot(isAuto = false) {
+        const dataUrl = canvas.toDataURL("image/png");
+        const timestamp = new Date().toLocaleTimeString("fr-FR");
+        const gallery = document.getElementById("gallery-container");
+
+        if (
+          gallery.children[0] &&
+          gallery.children[0].classList.contains("col-span-4")
+        ) {
+          gallery.innerHTML = "";
+        }
+
+        const item = document.createElement("div");
+        item.className =
+          "relative group rounded-lg overflow-hidden border border-slate-700 bg-slate-950 aspect-video shadow-md";
+        item.innerHTML = `
+                <img src="${dataUrl}" class="w-full h-full object-cover">
+                <div class="absolute inset-0 bg-slate-950/70 opacity-0 group-hover:opacity-100 transition flex items-center justify-center space-x-2">
+                    <a href="${dataUrl}" download="Aegis_Snapshot_${Date.now()}.png" class="p-1.5 rounded-full bg-emerald-600 text-white hover:bg-emerald-500 text-xs" title="Télécharger">
+                        <i class="fa-solid fa-download"></i>
+                    </a>
+                </div>
+                ${isAuto ? '<span class="absolute top-1 left-1 bg-red-600 text-[8px] font-bold text-white px-1 rounded">AUTO</span>' : ""}
+            `;
+
+        gallery.prepend(item);
+        const count = gallery.children.length;
+        document.getElementById("gallery-count").innerText =
+          `${count} Fichier${count > 1 ? "s" : ""}`;
+
+        if (!isAuto)
+          addLogEvent("MEDIA", `Photo enregistrée [${timestamp}]`, "cyan");
+      }
+
+      function toggleManualRecord() {
+        const recBtnText = document.getElementById("record-btn-text");
+        const recBtnIcon = document.getElementById("record-btn-icon");
+        const recDot = document.getElementById("rec-dot");
+        const recStatusText = document.getElementById("rec-status-text");
+
+        if (!isRecording) {
+          isRecording = true;
+          recBtnText.innerText = "Arrêter REC";
+          recBtnIcon.className =
+            "fa-solid fa-square text-red-500 animate-pulse";
+          recDot.className =
+            "h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse";
+          recStatusText.innerText = "ENREGISTREMENT";
+          recStatusText.classList.add("text-red-400");
+          addLogEvent("RECORD", "Démarrage enregistrement vidéo", "red");
+        } else {
+          isRecording = false;
+          recBtnText.innerText = "Enregistrer";
+          recBtnIcon.className = "fa-solid fa-circle text-red-500";
+          recDot.className = "h-2.5 w-2.5 rounded-full bg-slate-600";
+          recStatusText.innerText = "VEILLE";
+          recStatusText.classList.remove("text-red-400");
+          takeSnapshot();
+          addLogEvent("RECORD", "Vidéo enregistrée dans la galerie", "emerald");
+        }
+      }
+
+      // VISUAL FILTERS
+      function cycleFilter() {
+        const canvasEl = document.getElementById("view-canvas");
+        canvasEl.classList.remove("night-vision-effect", "thermal-effect");
+        activeFilterIndex = (activeFilterIndex + 1) % filterNames.length;
+
+        if (activeFilterIndex === 1)
+          canvasEl.classList.add("night-vision-effect");
+        else if (activeFilterIndex === 2)
+          canvasEl.classList.add("thermal-effect");
+
+        document.getElementById("filter-name").innerText =
+          filterNames[activeFilterIndex];
+        addLogEvent(
+          "DISPLAY",
+          `Vue basculée: ${filterNames[activeFilterIndex]}`,
+          "cyan",
+        );
+      }
+
+      function toggleHudGrid() {
+        const grid = document.getElementById("hud-grid");
+        showGrid = !showGrid;
+        grid.classList.toggle("hidden", !showGrid);
+      }
+
+      // LOGGING
+      function addLogEvent(category, message, color = "slate") {
+        const container = document.getElementById("event-logs-container");
+        const time = new Date().toLocaleTimeString("fr-FR");
+        const colorClasses = {
+          red: "text-red-400 border-red-900/50 bg-red-950/20",
+          emerald: "text-emerald-400 border-emerald-900/50 bg-emerald-950/20",
+          cyan: "text-cyan-400 border-cyan-900/50 bg-cyan-950/20",
+          amber: "text-amber-400 border-amber-900/50 bg-amber-950/20",
+          indigo: "text-indigo-400 border-indigo-900/50 bg-indigo-950/20",
+          slate: "text-slate-300 border-slate-800 bg-slate-950",
+        };
+
+        const item = document.createElement("div");
+        item.className = `p-2 rounded border text-[11px] flex items-start space-x-2 transition ${colorClasses[color] || colorClasses.slate}`;
+        item.innerHTML = `
+                <span class="text-slate-500 font-mono text-[10px] shrink-0 mt-0.5">[${time}]</span>
+                <div>
+                    <span class="font-bold uppercase tracking-wider text-[10px] mr-1">[${category}]</span>
+                    <span>${message}</span>
+                </div>
+            `;
+        container.prepend(item);
+        if (container.children.length > 40)
+          container.removeChild(container.lastChild);
+      }
+
+      function clearLogs() {
+        document.getElementById("event-logs-container").innerHTML = "";
+        addLogEvent("SYSTEM", "Journal réinitialisé.", "slate");
+      }
+    </script>
+  
+    <script>
+      // ===== APPAIRAGE TÉLÉPHONE -> PC (WebRTC via PeerJS, sans compte) =====
+      const sigLog = (m) => { const e = document.getElementById("pair-status"); if (e) e.textContent = m; };
+
+      function showRemoteStream(stream) {
+        stopCurrentStream();
+        isSimulationMode = false; isIpCameraStream = false;
+        ipStreamImg.classList.add("hidden");
+        currentStream = stream; video.srcObject = stream; video.play().catch(() => {});
+        video.onloadedmetadata = () => {
+          noSignalOverlay.classList.add("hidden");
+          document.getElementById("active-cam-name").innerText = "Smartphone distant (WebRTC)";
+          const p = document.getElementById("p2p-status");
+          p.innerText = "RELIÉ (P2P)"; p.className = "text-indigo-400 font-bold";
+          addLogEvent("P2P", "Flux du smartphone reçu en direct", "indigo");
+          sigLog("Téléphone connecté ✔"); closeQrModal();
+          startProcessingLoop();
+        };
+      }
+      function startPcSide() {
+        if (!window.Peer) { sigLog("Bibliothèque d’appairage indisponible"); return; }
+        const peer = new Peer();
+        peer.on("open", (id) => { PEER_ID = id; generateQrCode(); sigLog("En attente du téléphone…"); });
+        peer.on("call", (call) => { call.answer(); call.on("stream", showRemoteStream); sigLog("Téléphone détecté, connexion…"); });
+        peer.on("error", (e) => sigLog("Erreur d’appairage : " + e.type));
+        peer.on("disconnected", () => peer.reconnect());
+      }
+
+      function startPhoneSide(pcId) {
+        document.body.innerHTML = `<div style="min-height:100vh;background:#030712;color:#e2e8f0;font-family:Inter,sans-serif;padding:20px;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;text-align:center">
+          <div style="font-weight:700;letter-spacing:.1em">AEGIS<span style="color:#34d399;font-weight:400">VISION</span> · CAMÉRA</div>
+          <video id="pv" autoplay playsinline muted style="width:100%;max-width:420px;border-radius:12px;background:#000;display:none"></video>
+          <div id="ps" style="font:13px monospace;color:#94a3b8">Prêt à diffuser vers la station PC.</div>
+          <button id="pb" style="background:#10b981;color:#fff;border:0;border-radius:10px;padding:14px 24px;font-size:16px;font-weight:600">Démarrer la caméra</button></div>`;
+        const st = (m) => (document.getElementById("ps").textContent = m);
+        document.getElementById("pb").onclick = async () => {
+          const btn = document.getElementById("pb"); btn.disabled = true;
+          let stream;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+          } catch (e) { st("Caméra refusée (la page doit être en HTTPS)."); btn.disabled = false; return; }
+          const pv = document.getElementById("pv"); pv.srcObject = stream; pv.style.display = "block";
+          st("Connexion à la station…");
+          const peer = new Peer();
+          peer.on("error", (e) => st("Erreur : " + e.type));
+          peer.on("open", () => {
+            const call = peer.call(pcId, stream);
+            call.on("close", () => st("Connexion fermée."));
+            call.on("error", (e) => st("Erreur : " + e));
+            st("● Diffusion en cours vers le PC");
+          });
+          navigator.wakeLock && navigator.wakeLock.request("screen").catch(() => {});
+        };
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        const cam = new URLSearchParams(location.search).get("cam");
+        if (cam) startPhoneSide(cam); else startPcSide();
+      });
+    </script>
+  </body>
+</html>
